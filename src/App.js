@@ -18,15 +18,28 @@ class App extends Component {
             latLng: {lat: 0, lng: 0},
             address: '',
             zoom: 5,
-            cityLat: '',
-            cityLong: '',
+            cityLocation: {},
+            city: '',
             airports: [],
             loading: false,
             isAddressSelected: false,
+            isCitySelected: false,
             showSnack: false
         }
         this.markers = [];
     }
+
+    onCitySelected = (city) => {
+        geocodeByAddress(city)
+            .then(results => {
+                this.setState({
+                    city: results[0].formatted_address
+                });
+                return getLatLng(results[0])
+            })
+            .then(latLng => this.setState({cityLocation: latLng, isCitySelected: true}))
+            .catch(error => console.log(error));
+    };
 
     onSelect = (address) => {
         geocodeByAddress(address)
@@ -50,7 +63,7 @@ class App extends Component {
     };
 
     findNearest = (event) => {
-        if (this.state.isAddressSelected) {
+        if (this.state.isAddressSelected && this.state.isCitySelected) {
             event.preventDefault();
             this.setState({loading: true});
             fetch('https://us-central1-airports-222008.cloudfunctions.net/getNearestAirports', {
@@ -62,17 +75,19 @@ class App extends Component {
                 body: JSON.stringify({
                     id: this.id,
                     location: {
-                        latitude: Number(this.state.cityLat),
-                        longitude: Number(this.state.cityLong)
+                        latitude: Number(this.state.cityLocation.lat),
+                        longitude: Number(this.state.cityLocation.lng)
                     }
                 })
             }).then(res => res.json())
                 .then(data => {
                     this.setState({
                         loading: false,
-                        airports: data, address: '',
-                        cityLat: '',
-                        cityLong: '',
+                        airports: data,
+                        address: '',
+                        cityLocation: {},
+                        city: '',
+                        isCitySelected: false,
                         isAddressSelected: false
                     });
                     this.markers.forEach(marker => {
@@ -92,8 +107,9 @@ class App extends Component {
                     this.setState({
                         loading: false,
                         address: '',
-                        cityLat: '',
-                        cityLong: '',
+                        cityLocation: {},
+                        city: '',
+                        isCitySelected: false,
                         isAddressSelected: false
                     });
                 });
@@ -105,10 +121,8 @@ class App extends Component {
     };
 
     render() {
-        const {cityLat, cityLong} = this.state;
-        if (cityLat !== '' && cityLong !== '') {
-            this.marker.setPosition({lat: Number(cityLat), lng: Number(cityLong)});
-        }
+        if (this.state.isCitySelected)
+            this.marker.setPosition(this.state.cityLocation);
         return (
             <div className={'app-container'}>
                 <Snackbar
@@ -162,12 +176,44 @@ class App extends Component {
                             </PlacesAutocomplete>
                         </div>
                         <div className={'lat-lng-input'}>
-                            <TextField value={this.state.cityLat}
-                                       onChange={(event) => this.setState({cityLat: event.target.value})} outlined
-                                       label={'Latitude of City'}/>
-                            <TextField value={this.state.cityLong}
-                                       onChange={(event) => this.setState({cityLong: event.target.value})}
-                                       style={{marginLeft: '5%'}} outlined label={'Longitude of City'}/>
+                            <PlacesAutocomplete
+                                value={this.state.city}
+                                onChange={(city) => this.setState({city})}
+                                onSelect={this.onCitySelected}>
+                                {({getInputProps, suggestions, getSuggestionItemProps, loading}) => (
+                                    <div>
+                                        <TextField
+                                            outlined
+                                            {...getInputProps({
+                                                placeholder: 'Enter City Name',
+                                                className: 'location-search-input',
+                                            })}
+                                        />
+                                        <div className="autocomplete-dropdown-container">
+                                            {loading && <div>Loading...</div>}
+                                            {suggestions.map(suggestion => {
+                                                const className = suggestion.active
+                                                    ? 'suggestion-item--active'
+                                                    : 'suggestion-item';
+                                                // inline style for demonstration purpose
+                                                const style = suggestion.active
+                                                    ? {backgroundColor: '#fafafa', cursor: 'pointer'}
+                                                    : {backgroundColor: '#ffffff', cursor: 'pointer'};
+                                                return (
+                                                    <div
+                                                        {...getSuggestionItemProps(suggestion, {
+                                                            className,
+                                                            style,
+                                                        })}
+                                                    >
+                                                        <span>{suggestion.description}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </PlacesAutocomplete>
                             <Button disabled={this.state.loading} onClick={this.findNearest} style={{marginLeft: '5%'}}
                                     raised>Find</Button>
                         </div>
@@ -184,15 +230,15 @@ class App extends Component {
                         </tr>
                         </thead>
                         <tbody>
-                        {this.state.loading ? <ReactLoading type={'spin'} color={'#000000'} /> :
+                        {this.state.loading ? <ReactLoading type={'spin'} color={'#000000'}/> :
                             this.state.airports.map(airport => {
-                                return <tr>
+                                return <tr key={airport.key}>
                                     <td>{airport.nameAirport}</td>
                                     <td>{airport.codeIataCity}</td>
                                     <td>{airport.codeIataAirport}</td>
                                     <td>{airport.codeIcaoAirport}</td>
                                     <td>{`${airport.latitude}, ${airport.longitude}`}</td>
-                                    <td>{`${airport.distance / 1000} KM`}</td>
+                                    <td>{`${airport.distance}`}</td>
                                 </tr>
                             })}
                         </tbody>
