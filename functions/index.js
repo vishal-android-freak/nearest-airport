@@ -5,6 +5,11 @@ const geolib = require('geolib');
 const cors = require('cors')({origin: true});
 admin.initializeApp();
 
+const googleMapsClient = require('@google/maps').createClient({
+    key: 'AIzaSyA3WvtqcOacHZdoMkAieW_ly3IRAr7Vg8E',
+    Promise: Promise
+});
+
 // // Create and Deploy Your First Cloud Functions
 // // https://firebase.google.com/docs/functions/write-firebase-functions
 //
@@ -25,8 +30,22 @@ exports.getNearestAirports = functions.https.onRequest((request, response) => {
                 for (let i = 0; i < 5; i++) {
                     finalList.push(nearestAirports[i]);
                 }
-                response.status(200).send(finalList);
-                admin.database().ref(`${request.body.id}`).set(null);
+                const promises = [];
+                finalList.forEach(airport => promises.push(googleMapsClient.distanceMatrix({
+                    origins: [request.body.location],
+                    destinations: [airport]
+                }).asPromise()));
+                Promise.all(promises)
+                    .then(results => {
+                        const newData = [];
+                        results.forEach((result, index) => {
+                            const airport = Object.assign({},finalList[index]);
+                            airport.distance = result.json.rows[0].elements[0].distance.text;
+                            newData.push(airport);
+                        });
+                        response.status(200).send(newData);
+                        admin.database().ref(`${request.body.id}`).set(null);
+                    });
             });
         } catch (e) {
             response.status(500).send({error: e.message});
